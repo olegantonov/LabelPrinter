@@ -140,13 +140,88 @@
 
         <!-- Tab: Configuracoes -->
         <section id="tab-configuracoes" class="tab-content">
-            <h2>Configuracoes</h2>
+            <h2>Configuracoes do Sistema</h2>
 
+            <!-- Integracao Benu ERP -->
+            <div class="config-section">
+                <h3>Integracao Benu ERP</h3>
+                <div class="form-row">
+                    <div class="form-group flex-2">
+                        <label>Token de Autenticacao (Bearer):</label>
+                        <input type="password" id="benu-token" class="form-control" placeholder="Cole seu token aqui">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: flex-end; gap: 5px;">
+                        <button type="button" id="btn-salvar-benu-token" class="btn btn-primary">Salvar Token</button>
+                        <button type="button" id="btn-testar-benu" class="btn btn-secondary">Testar Conexao</button>
+                    </div>
+                </div>
+                <div id="benu-status" class="status-message"></div>
+                <small>Base URL: https://www.benuerp.com.br | Timeout: 30s</small>
+            </div>
+
+            <!-- Configuracoes de Etiqueta -->
+            <div class="config-section">
+                <h3>Configuracoes de Etiqueta (Padrao Correios)</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Resolucao (DPI):</label>
+                        <input type="number" id="etiqueta-dpi" class="form-control" value="300" min="150" max="600">
+                        <small>Minimo recomendado: 300 DPI</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Tamanho Fonte Minimo:</label>
+                        <input type="number" id="etiqueta-fonte" class="form-control" value="10" min="8" max="14">
+                        <small>Minimo: 10 pontos</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="etiqueta-cepnet" checked>
+                            Incluir CEPNet (codigo de barras)
+                        </label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="etiqueta-datamatrix">
+                            Incluir Data Matrix (2D)
+                        </label>
+                    </div>
+                </div>
+                <button type="button" id="btn-salvar-etiqueta-config" class="btn btn-primary">Salvar Configuracoes</button>
+            </div>
+
+            <!-- Data Matrix (Correios) -->
+            <div class="config-section">
+                <h3>Data Matrix - Parametros Correios</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>IDV (Tipo de Servico):</label>
+                        <select id="datamatrix-idv" class="form-control">
+                            <option value="01">01 - FAC Simples</option>
+                            <option value="03" selected>03 - Carta Simples</option>
+                            <option value="04">04 - E-Carta Simples</option>
+                            <option value="16">16 - FAC Registrado</option>
+                            <option value="17">17 - Carta Registrada</option>
+                            <option value="27">27 - Carta via Internet</option>
+                            <option value="28">28 - E-Carta Registrado</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>CNAE da Empresa:</label>
+                        <input type="text" id="datamatrix-cnae" class="form-control" placeholder="0000000" maxlength="9">
+                    </div>
+                </div>
+                <button type="button" id="btn-salvar-datamatrix" class="btn btn-primary">Salvar</button>
+            </div>
+
+            <!-- Impressora Padrao por Tipo -->
             <div class="config-section">
                 <h3>Impressora Padrao por Tipo de Etiqueta</h3>
                 <div id="config-etiquetas"></div>
             </div>
 
+            <!-- Dados do Remetente -->
             <div class="config-section">
                 <h3>Dados do Remetente</h3>
                 <form id="form-remetente">

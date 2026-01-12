@@ -483,6 +483,194 @@ function adicionarImpressoraSistema(nome) {
     openModal('modal-impressora');
 }
 
+// ============== Configuracoes do Sistema (Settings) ==============
+
+async function carregarSettings() {
+    try {
+        const settings = await api.get('/api/settings');
+
+        // Benu ERP
+        if (settings.benu_api) {
+            const benuToken = document.getElementById('benu-token');
+            if (benuToken) {
+                benuToken.value = settings.benu_api.token || '';
+            }
+        }
+
+        // Etiquetas
+        if (settings.etiquetas) {
+            const dpi = document.getElementById('etiqueta-dpi');
+            const fonte = document.getElementById('etiqueta-fonte');
+            const cepnet = document.getElementById('etiqueta-cepnet');
+            const datamatrix = document.getElementById('etiqueta-datamatrix');
+
+            if (dpi) dpi.value = settings.etiquetas.resolucao_dpi || 300;
+            if (fonte) fonte.value = settings.etiquetas.tamanho_fonte_min || 10;
+            if (cepnet) cepnet.checked = settings.etiquetas.incluir_cepnet !== false;
+            if (datamatrix) datamatrix.checked = settings.etiquetas.incluir_datamatrix || false;
+        }
+
+        // Data Matrix
+        if (settings.datamatrix) {
+            const idv = document.getElementById('datamatrix-idv');
+            const cnae = document.getElementById('datamatrix-cnae');
+
+            if (idv) idv.value = settings.datamatrix.idv_padrao || '03';
+            if (cnae) cnae.value = settings.datamatrix.cnae || '';
+        }
+    } catch (error) {
+        console.error('Erro ao carregar settings:', error);
+    }
+}
+
+async function salvarTokenBenu() {
+    const tokenField = document.getElementById('benu-token');
+    if (!tokenField) return;
+
+    const token = tokenField.value;
+
+    try {
+        await api.post('/api/settings/benu/token', { token: token });
+        showToast('Token Benu atualizado com sucesso', 'success');
+    } catch (error) {
+        showToast('Erro ao salvar token Benu', 'error');
+    }
+}
+
+async function testarConexaoBenu() {
+    try {
+        const result = await api.get('/api/settings/benu/test');
+        if (result.success) {
+            showToast('Conexao com Benu ERP OK!', 'success');
+        } else {
+            showToast(result.error || 'Falha na conexao', 'error');
+        }
+    } catch (error) {
+        showToast('Erro ao testar conexao Benu', 'error');
+    }
+}
+
+async function salvarConfigEtiquetas() {
+    const dpi = document.getElementById('etiqueta-dpi');
+    const fonte = document.getElementById('etiqueta-fonte');
+    const cepnet = document.getElementById('etiqueta-cepnet');
+    const datamatrix = document.getElementById('etiqueta-datamatrix');
+
+    const dados = {
+        resolucao_dpi: dpi ? parseInt(dpi.value) || 300 : 300,
+        tamanho_fonte_min: fonte ? parseInt(fonte.value) || 10 : 10,
+        incluir_cepnet: cepnet ? cepnet.checked : true,
+        incluir_datamatrix: datamatrix ? datamatrix.checked : false
+    };
+
+    try {
+        await api.post('/api/settings/etiquetas', dados);
+        showToast('Configuracoes de etiqueta salvas', 'success');
+    } catch (error) {
+        showToast('Erro ao salvar configuracoes', 'error');
+    }
+}
+
+async function salvarConfigDataMatrix() {
+    const idvField = document.getElementById('datamatrix-idv');
+    const cnaeField = document.getElementById('datamatrix-cnae');
+
+    const dados = {
+        idv_padrao: idvField ? idvField.value || '03' : '03',
+        cnae: cnaeField ? cnaeField.value || '' : ''
+    };
+
+    try {
+        await api.post('/api/settings/datamatrix', dados);
+        showToast('Configuracoes Data Matrix salvas', 'success');
+    } catch (error) {
+        showToast('Erro ao salvar configuracoes Data Matrix', 'error');
+    }
+}
+
+// ============== Auto-preenchimento de CEP ==============
+
+async function consultarCep(cepInput) {
+    const cep = cepInput.replace(/\D/g, '');
+    if (cep.length !== 8) return null;
+
+    try {
+        const result = await api.get(`/api/cep/${cep}`);
+        return result;
+    } catch (error) {
+        console.error('Erro ao consultar CEP:', error);
+        return null;
+    }
+}
+
+function initCepAutoFill() {
+    // Observar mudancas nos campos de CEP nos formularios de endereco
+    document.addEventListener('change', async (e) => {
+        if (e.target.classList.contains('end-cep')) {
+            const cep = e.target.value;
+            if (cep.replace(/\D/g, '').length === 8) {
+                const dadosCep = await consultarCep(cep);
+                if (dadosCep && dadosCep.cep) {
+                    const container = e.target.closest('.endereco-form-item');
+                    if (container) {
+                        const logradouro = container.querySelector('.end-logradouro');
+                        const bairro = container.querySelector('.end-bairro');
+                        const cidade = container.querySelector('.end-cidade');
+                        const estado = container.querySelector('.end-estado');
+
+                        if (logradouro && !logradouro.value && dadosCep.street) {
+                            logradouro.value = dadosCep.street;
+                        }
+                        if (bairro && !bairro.value && dadosCep.neighborhood) {
+                            bairro.value = dadosCep.neighborhood;
+                        }
+                        if (cidade && !cidade.value && dadosCep.city) {
+                            cidade.value = dadosCep.city;
+                        }
+                        if (estado && dadosCep.state) {
+                            estado.value = dadosCep.state;
+                        }
+
+                        showToast('CEP encontrado - endereco preenchido', 'success');
+                    }
+                }
+            }
+        }
+    });
+
+    // CEP do remetente
+    const cepRemetente = document.getElementById('rem-cep');
+    if (cepRemetente) {
+        cepRemetente.addEventListener('change', async (e) => {
+            const cep = e.target.value;
+            if (cep.replace(/\D/g, '').length === 8) {
+                const dadosCep = await consultarCep(cep);
+                if (dadosCep && dadosCep.cep) {
+                    const logradouro = document.getElementById('rem-logradouro');
+                    const bairro = document.getElementById('rem-bairro');
+                    const cidade = document.getElementById('rem-cidade');
+                    const estado = document.getElementById('rem-estado');
+
+                    if (logradouro && !logradouro.value && dadosCep.street) {
+                        logradouro.value = dadosCep.street;
+                    }
+                    if (bairro && !bairro.value && dadosCep.neighborhood) {
+                        bairro.value = dadosCep.neighborhood;
+                    }
+                    if (cidade && !cidade.value && dadosCep.city) {
+                        cidade.value = dadosCep.city;
+                    }
+                    if (estado && dadosCep.state) {
+                        estado.value = dadosCep.state;
+                    }
+
+                    showToast('CEP do remetente preenchido', 'success');
+                }
+            }
+        });
+    }
+}
+
 // ============== Tipos de Etiqueta e Configuracoes ==============
 
 async function carregarTiposEtiqueta() {
@@ -787,6 +975,30 @@ function initEventListeners() {
 
     // Busca
     initBuscaClientes();
+
+    // Auto-preenchimento de CEP
+    initCepAutoFill();
+
+    // Botoes de configuracoes do sistema
+    const btnSalvarBenu = document.getElementById('btn-salvar-benu-token');
+    if (btnSalvarBenu) {
+        btnSalvarBenu.addEventListener('click', salvarTokenBenu);
+    }
+
+    const btnTestarBenu = document.getElementById('btn-testar-benu');
+    if (btnTestarBenu) {
+        btnTestarBenu.addEventListener('click', testarConexaoBenu);
+    }
+
+    const btnSalvarEtiquetas = document.getElementById('btn-salvar-etiqueta-config');
+    if (btnSalvarEtiquetas) {
+        btnSalvarEtiquetas.addEventListener('click', salvarConfigEtiquetas);
+    }
+
+    const btnSalvarDatamatrix = document.getElementById('btn-salvar-datamatrix');
+    if (btnSalvarDatamatrix) {
+        btnSalvarDatamatrix.addEventListener('click', salvarConfigDataMatrix);
+    }
 }
 
 // ============== Inicializacao ==============
@@ -799,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         carregarClientes(),
         carregarImpressoras(),
         carregarTiposEtiqueta(),
-        carregarRemetente()
+        carregarRemetente(),
+        carregarSettings()
     ]);
 });

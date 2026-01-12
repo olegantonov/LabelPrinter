@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  labelprinter:
+    build: .
+    container_name: labelprinter
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistir banco de dados
+      - ./data:/app/backend/data
+      # Persistir uploads e configuracoes
+      - ./uploads:/app/backend/uploads
+      # Persistir etiquetas geradas
+      - ./generated_labels:/app/backend/generated_labels
+      # Acesso ao CUPS do host para impressao
+      - /var/run/cups:/var/run/cups
+    environment:
+      - DATABASE_URL=sqlite:///./data/labelprinter.db
+      - UPLOAD_DIR=./uploads
+      - LABELS_DIR=./generated_labels
+    restart: unless-stopped
+
+  # Opcional: CUPS para gerenciamento de impressoras
+  # cups:
+  #   image: olbat/cupsd
+  #   container_name: cups
+  #   ports:
+  #     - "631:631"
+  #   volumes:
+  #     - /var/run/cups:/var/run/cups
+  #     - ./cups:/etc/cups
+  #   restart: unless-stopped

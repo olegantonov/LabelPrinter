@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Impressao de Etiquetas</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>Sistema de Impressao de Etiquetas</h1>
+            <nav class="nav-tabs">
+                <button class="tab-btn active" data-tab="impressao">Impressao</button>
+                <button class="tab-btn" data-tab="clientes">Clientes</button>
+                <button class="tab-btn" data-tab="impressoras">Impressoras</button>
+                <button class="tab-btn" data-tab="configuracoes">Configuracoes</button>
+            </nav>
+        </header>
+
+        <!-- Tab: Impressao -->
+        <section id="tab-impressao" class="tab-content active">
+            <div class="print-section">
+                <div class="form-group">
+                    <label for="select-cliente">Selecione o Cliente:</label>
+                    <select id="select-cliente" class="form-control">
+                        <option value="">-- Selecione um cliente --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="select-endereco">Selecione o Endereco:</label>
+                    <select id="select-endereco" class="form-control" disabled>
+                        <option value="">-- Selecione um endereco --</option>
+                    </select>
+                </div>
+
+                <div class="endereco-preview" id="endereco-preview" style="display: none;">
+                    <h4>Endereco Selecionado:</h4>
+                    <div id="endereco-detalhes"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="select-tipo-etiqueta">Tipo de Etiqueta:</label>
+                    <select id="select-tipo-etiqueta" class="form-control">
+                        <option value="">-- Selecione o tipo --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="select-impressora">Impressora (opcional):</label>
+                    <select id="select-impressora" class="form-control">
+                        <option value="">-- Usar padrao configurada --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="quantidade">Quantidade:</label>
+                    <input type="number" id="quantidade" class="form-control" value="1" min="1" max="100">
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="incluir-barcode" checked>
+                        Incluir codigo de barras (Correios)
+                    </label>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="incluir-remetente">
+                        Incluir remetente
+                    </label>
+                </div>
+
+                <div class="button-group">
+                    <button id="btn-preview" class="btn btn-secondary" disabled>Visualizar</button>
+                    <button id="btn-download" class="btn btn-info" disabled>Download PDF</button>
+                    <button id="btn-imprimir" class="btn btn-primary" disabled>Imprimir</button>
+                </div>
+
+                <div id="preview-container" style="display: none;">
+                    <h3>Preview da Etiqueta:</h3>
+                    <iframe id="preview-iframe" style="width: 100%; height: 400px; border: 1px solid #ccc;"></iframe>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Clientes -->
+        <section id="tab-clientes" class="tab-content">
+            <div class="section-header">
+                <h2>Gerenciar Clientes</h2>
+                <button id="btn-novo-cliente" class="btn btn-primary">Novo Cliente</button>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="busca-cliente" class="form-control" placeholder="Buscar cliente...">
+            </div>
+
+            <table class="data-table" id="tabela-clientes">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Documento</th>
+                        <th>Telefone</th>
+                        <th>Email</th>
+                        <th>Enderecos</th>
+                        <th>Acoes</th>
+                    </tr>
+                </thead>
+                <tbody id="lista-clientes">
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Tab: Impressoras -->
+        <section id="tab-impressoras" class="tab-content">
+            <div class="section-header">
+                <h2>Gerenciar Impressoras</h2>
+                <button id="btn-nova-impressora" class="btn btn-primary">Nova Impressora</button>
+                <button id="btn-detectar-impressoras" class="btn btn-secondary">Detectar do Sistema</button>
+            </div>
+
+            <table class="data-table" id="tabela-impressoras">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Nome no Sistema</th>
+                        <th>Tipo</th>
+                        <th>Modelo</th>
+                        <th>Status</th>
+                        <th>Acoes</th>
+                    </tr>
+                </thead>
+                <tbody id="lista-impressoras">
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Tab: Configuracoes -->
+        <section id="tab-configuracoes" class="tab-content">
+            <h2>Configuracoes</h2>
+
+            <div class="config-section">
+                <h3>Impressora Padrao por Tipo de Etiqueta</h3>
+                <div id="config-etiquetas"></div>
+            </div>
+
+            <div class="config-section">
+                <h3>Dados do Remetente</h3>
+                <form id="form-remetente">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Nome/Empresa:</label>
+                            <input type="text" id="rem-nome" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label>Logradouro:</label>
+                            <input type="text" id="rem-logradouro" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Numero:</label>
+                            <input type="text" id="rem-numero" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Complemento:</label>
+                            <input type="text" id="rem-complemento" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Bairro:</label>
+                            <input type="text" id="rem-bairro" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label>Cidade:</label>
+                            <input type="text" id="rem-cidade" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Estado:</label>
+                            <select id="rem-estado" class="form-control" required>
+                                <option value="">UF</option>
+                                <option value="AC">AC</option>
+                                <option value="AL">AL</option>
+                                <option value="AP">AP</option>
+                                <option value="AM">AM</option>
+                                <option value="BA">BA</option>
+                                <option value="CE">CE</option>
+                                <option value="DF">DF</option>
+                                <option value="ES">ES</option>
+                                <option value="GO">GO</option>
+                                <option value="MA">MA</option>
+                                <option value="MT">MT</option>
+                                <option value="MS">MS</option>
+                                <option value="MG">MG</option>
+                                <option value="PA">PA</option>
+                                <option value="PB">PB</option>
+                                <option value="PR">PR</option>
+                                <option value="PE">PE</option>
+                                <option value="PI">PI</option>
+                                <option value="RJ">RJ</option>
+                                <option value="RN">RN</option>
+                                <option value="RS">RS</option>
+                                <option value="RO">RO</option>
+                                <option value="RR">RR</option>
+                                <option value="SC">SC</option>
+                                <option value="SP">SP</option>
+                                <option value="SE">SE</option>
+                                <option value="TO">TO</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>CEP:</label>
+                            <input type="text" id="rem-cep" class="form-control" placeholder="00000-000" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Salvar Remetente</button>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal: Cliente -->
+    <div id="modal-cliente" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-cliente-titulo">Novo Cliente</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <form id="form-cliente">
+                <input type="hidden" id="cliente-id">
+                <div class="form-row">
+                    <div class="form-group flex-2">
+                        <label>Nome:</label>
+                        <input type="text" id="cliente-nome" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Documento (CPF/CNPJ):</label>
+                        <input type="text" id="cliente-documento" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Telefone:</label>
+                        <input type="text" id="cliente-telefone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="cliente-email" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Observacoes:</label>
+                    <textarea id="cliente-observacoes" class="form-control" rows="2"></textarea>
+                </div>
+
+                <div class="enderecos-section">
+                    <div class="section-header">
+                        <h4>Enderecos</h4>
+                        <button type="button" id="btn-add-endereco" class="btn btn-sm btn-secondary">+ Endereco</button>
+                    </div>
+                    <div id="lista-enderecos-form"></div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Impressora -->
+    <div id="modal-impressora" class="modal">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3 id="modal-impressora-titulo">Nova Impressora</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <form id="form-impressora">
+                <input type="hidden" id="impressora-id">
+                <div class="form-group">
+                    <label>Nome:</label>
+                    <input type="text" id="impressora-nome" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Nome no Sistema:</label>
+                    <input type="text" id="impressora-nome-sistema" class="form-control" required>
+                    <small>Nome da impressora conforme listado no CUPS</small>
+                </div>
+                <div class="form-group">
+                    <label>Tipo:</label>
+                    <select id="impressora-tipo" class="form-control" required>
+                        <option value="thermal">Termica</option>
+                        <option value="laser">Laser</option>
+                        <option value="inkjet">Jato de Tinta</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Modelo:</label>
+                    <input type="text" id="impressora-modelo" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Localizacao:</label>
+                    <input type="text" id="impressora-localizacao" class="form-control">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Impressoras do Sistema -->
+    <div id="modal-impressoras-sistema" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Impressoras Detectadas no Sistema</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div id="lista-impressoras-sistema"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-cancel">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

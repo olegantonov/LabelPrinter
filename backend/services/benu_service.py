@@ -82,8 +82,6 @@ class BenuService:
 
     async def test_connection(self) -> Dict[str, Any]:
         """Testa conexao com a API Benu"""
-        # Faz uma requisicao simples para testar o token
-        # Usando endpoint de CRM como teste
         result = await self._request(
             "GET",
             "/erpCrmWar/servicosCrm/consultaFunil/consultarCards/1/0/1"
@@ -95,6 +93,88 @@ class BenuService:
             return {"success": False, "message": result.get("message", "Erro desconhecido")}
 
         return {"success": True, "message": "Conexao OK"}
+
+    # ============== Busca de Clientes/OS ==============
+
+    async def buscar_os(
+        self,
+        termo: Optional[str] = None,
+        data_inicio: Optional[str] = None,
+        data_fim: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Busca Ordens de Servico com dados de cliente
+        Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOS
+        """
+        filtros = {}
+        if termo:
+            filtros["termo"] = termo
+        if data_inicio:
+            filtros["dataInicio"] = data_inicio
+        if data_fim:
+            filtros["dataFim"] = data_fim
+        if status:
+            filtros["status"] = status
+
+        return await self._request(
+            "POST",
+            "/new/servicos/servicosOperacionais/retornoRelatorioOS",
+            data=filtros
+        )
+
+    async def buscar_orcamentos(
+        self,
+        termo: Optional[str] = None,
+        data_inicio: Optional[str] = None,
+        data_fim: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Busca Orcamentos com dados de cliente
+        Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOrcamentos
+        """
+        filtros = {}
+        if termo:
+            filtros["termo"] = termo
+        if data_inicio:
+            filtros["dataInicio"] = data_inicio
+        if data_fim:
+            filtros["dataFim"] = data_fim
+
+        return await self._request(
+            "POST",
+            "/new/servicos/servicosOperacionais/retornoRelatorioOrcamentos",
+            data=filtros
+        )
+
+    async def consultar_cards_crm(
+        self,
+        cd_funil: int = 1,
+        offset: int = 0,
+        max_results: int = 100,
+        termo_busca: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Consulta cards do CRM (clientes/leads)
+        Endpoint: GET /erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cdFunil}/{offSet}/{maxResults}
+        """
+        result = await self._request(
+            "GET",
+            f"/erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cd_funil}/{offset}/{max_results}"
+        )
+
+        # Filtra por termo se fornecido
+        if not result.get("error") and termo_busca and result.get("data"):
+            dados = result["data"]
+            if isinstance(dados, list):
+                termo_lower = termo_busca.lower()
+                dados_filtrados = [
+                    item for item in dados
+                    if termo_lower in str(item).lower()
+                ]
+                result["data"] = dados_filtrados
+
+        return result
 
     # ============== Modulo Financeiro ==============
 
@@ -142,47 +222,6 @@ class BenuService:
             "POST",
             "/erpFinanceiroWar/financeiro/apiFinanceiro/relatorioExtratos",
             data=data
-        )
-
-    # ============== Modulo CRM ==============
-
-    async def consultar_cards(
-        self,
-        cd_funil: int,
-        offset: int = 0,
-        max_results: int = 50
-    ) -> Dict[str, Any]:
-        """
-        Consulta cards do CRM
-        Endpoint: GET /erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cdFunil}/{offSet}/{maxResults}
-        """
-        return await self._request(
-            "GET",
-            f"/erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cd_funil}/{offset}/{max_results}"
-        )
-
-    # ============== Servicos Operacionais ==============
-
-    async def get_relatorio_os(self, filtros: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Consulta relatorio de OS
-        Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOS
-        """
-        return await self._request(
-            "POST",
-            "/new/servicos/servicosOperacionais/retornoRelatorioOS",
-            data=filtros
-        )
-
-    async def get_relatorio_orcamentos(self, filtros: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Consulta relatorio de orcamentos
-        Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOrcamentos
-        """
-        return await self._request(
-            "POST",
-            "/new/servicos/servicosOperacionais/retornoRelatorioOrcamentos",
-            data=filtros
         )
 
 

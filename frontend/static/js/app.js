@@ -1,14 +1,14 @@
 /**
- * Sistema de Impressao de Etiquetas - Frontend
+ * Sistema de Impressao de Etiquetas v3.0
+ * Integracao com Benu ERP
  */
 
 // Estado da aplicacao
 const state = {
-    clientes: [],
     impressoras: [],
     tiposEtiqueta: [],
-    clienteSelecionado: null,
-    enderecoSelecionado: null
+    dadosEtiqueta: null,
+    updateAvailable: false
 };
 
 // API Helper
@@ -18,7 +18,6 @@ const api = {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         return response.json();
     },
-
     async post(url, data) {
         const response = await fetch(url, {
             method: 'POST',
@@ -26,12 +25,11 @@ const api = {
             body: JSON.stringify(data)
         });
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             throw new Error(error.detail || 'Erro na requisicao');
         }
         return response.json();
     },
-
     async put(url, data) {
         const response = await fetch(url, {
             method: 'PUT',
@@ -39,12 +37,11 @@ const api = {
             body: JSON.stringify(data)
         });
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             throw new Error(error.detail || 'Erro na requisicao');
         }
         return response.json();
     },
-
     async delete(url) {
         const response = await fetch(url, { method: 'DELETE' });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -57,21 +54,15 @@ function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.className = `toast ${type} show`;
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3000);
+    setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
 // Tab Navigation
 function initTabs() {
-    const tabs = document.querySelectorAll('.tab-btn');
-    tabs.forEach(tab => {
+    document.querySelectorAll('.tab-btn').forEach(tab => {
         tab.addEventListener('click', () => {
-            // Remove active de todas as tabs
-            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-            // Ativa a tab clicada
             tab.classList.add('active');
             document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
         });
@@ -82,251 +73,197 @@ function initTabs() {
 function openModal(modalId) {
     document.getElementById(modalId).classList.add('show');
 }
-
 function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('show');
 }
-
 function initModals() {
-    // Fechar ao clicar no X ou no botao cancelar
     document.querySelectorAll('.modal-close, .modal-cancel').forEach(el => {
-        el.addEventListener('click', (e) => {
-            e.target.closest('.modal').classList.remove('show');
-        });
+        el.addEventListener('click', (e) => e.target.closest('.modal').classList.remove('show'));
     });
-
-    // Fechar ao clicar fora
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.classList.remove('show');
-            }
+            if (e.target === modal) modal.classList.remove('show');
         });
     });
 }
 
-// ============== Clientes ==============
+// ============== Benu ERP ==============
 
-async function carregarClientes() {
+async function verificarStatusBenu() {
+    const statusEl = document.getElementById('benu-connection-status');
     try {
-        state.clientes = await api.get('/api/clientes');
-        renderizarClientes();
-        atualizarSelectClientes();
+        const result = await api.get('/api/benu/status');
+        if (result.connected) {
+            statusEl.textContent = 'Benu: Conectado';
+            statusEl.className = 'status-badge enabled';
+        } else {
+            statusEl.textContent = 'Benu: ' + (result.message || 'Desconectado');
+            statusEl.className = 'status-badge disabled';
+        }
     } catch (error) {
-        showToast('Erro ao carregar clientes', 'error');
-        console.error(error);
+        statusEl.textContent = 'Benu: Erro';
+        statusEl.className = 'status-badge disabled';
     }
 }
 
-function renderizarClientes() {
-    const tbody = document.getElementById('lista-clientes');
+async function buscarNoBenu() {
+    const tipo = document.getElementById('benu-tipo-busca').value;
+    const termo = document.getElementById('benu-termo').value;
 
-    if (state.clientes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>Nenhum cliente cadastrado</p></td></tr>';
+    if (!termo.trim()) {
+        showToast('Digite um termo de busca', 'error');
         return;
     }
 
-    tbody.innerHTML = state.clientes.map(cliente => `
-        <tr>
-            <td>${cliente.nome}</td>
-            <td>${cliente.documento || '-'}</td>
-            <td>${cliente.telefone || '-'}</td>
-            <td>${cliente.email || '-'}</td>
-            <td>${cliente.qtd_enderecos}</td>
-            <td class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="editarCliente(${cliente.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="excluirCliente(${cliente.id})">Excluir</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-function atualizarSelectClientes() {
-    const select = document.getElementById('select-cliente');
-    select.innerHTML = '<option value="">-- Selecione um cliente --</option>';
-    state.clientes.forEach(cliente => {
-        select.innerHTML += `<option value="${cliente.id}">${cliente.nome}</option>`;
-    });
-}
-
-async function editarCliente(id) {
     try {
-        const cliente = await api.get(`/api/clientes/${id}`);
+        showToast('Buscando...', 'info');
+        const resultados = await api.post('/api/benu/buscar', { tipo, termo });
 
-        document.getElementById('modal-cliente-titulo').textContent = 'Editar Cliente';
-        document.getElementById('cliente-id').value = cliente.id;
-        document.getElementById('cliente-nome').value = cliente.nome;
-        document.getElementById('cliente-documento').value = cliente.documento || '';
-        document.getElementById('cliente-telefone').value = cliente.telefone || '';
-        document.getElementById('cliente-email').value = cliente.email || '';
-        document.getElementById('cliente-observacoes').value = cliente.observacoes || '';
+        const container = document.getElementById('benu-lista-resultados');
+        const resultadosDiv = document.getElementById('benu-resultados');
 
-        // Renderizar enderecos
-        renderizarEnderecosForm(cliente.enderecos);
-
-        openModal('modal-cliente');
-    } catch (error) {
-        showToast('Erro ao carregar cliente', 'error');
-        console.error(error);
-    }
-}
-
-async function excluirCliente(id) {
-    if (!confirm('Deseja realmente excluir este cliente?')) return;
-
-    try {
-        await api.delete(`/api/clientes/${id}`);
-        showToast('Cliente excluido com sucesso', 'success');
-        carregarClientes();
-    } catch (error) {
-        showToast('Erro ao excluir cliente', 'error');
-        console.error(error);
-    }
-}
-
-function novoCliente() {
-    document.getElementById('modal-cliente-titulo').textContent = 'Novo Cliente';
-    document.getElementById('form-cliente').reset();
-    document.getElementById('cliente-id').value = '';
-    document.getElementById('lista-enderecos-form').innerHTML = '';
-    openModal('modal-cliente');
-}
-
-function renderizarEnderecosForm(enderecos = []) {
-    const container = document.getElementById('lista-enderecos-form');
-    container.innerHTML = enderecos.map((end, index) => criarEnderecoFormHTML(end, index)).join('');
-}
-
-function criarEnderecoFormHTML(endereco = {}, index = 0) {
-    return `
-        <div class="endereco-form-item" data-index="${index}" data-id="${endereco.id || ''}">
-            <button type="button" class="btn btn-sm btn-danger btn-remove-endereco" onclick="removerEnderecoForm(this)">X</button>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Descricao:</label>
-                    <input type="text" class="form-control end-descricao" value="${endereco.descricao || ''}" placeholder="Ex: Residencial">
-                </div>
-                <div class="form-group">
-                    <label>Destinatario:</label>
-                    <input type="text" class="form-control end-destinatario" value="${endereco.destinatario || ''}" placeholder="Se diferente do cliente">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group flex-2">
-                    <label>Logradouro:</label>
-                    <input type="text" class="form-control end-logradouro" value="${endereco.logradouro || ''}" required>
-                </div>
-                <div class="form-group">
-                    <label>Numero:</label>
-                    <input type="text" class="form-control end-numero" value="${endereco.numero || ''}" required>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Complemento:</label>
-                    <input type="text" class="form-control end-complemento" value="${endereco.complemento || ''}">
-                </div>
-                <div class="form-group">
-                    <label>Bairro:</label>
-                    <input type="text" class="form-control end-bairro" value="${endereco.bairro || ''}" required>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group flex-2">
-                    <label>Cidade:</label>
-                    <input type="text" class="form-control end-cidade" value="${endereco.cidade || ''}" required>
-                </div>
-                <div class="form-group">
-                    <label>Estado:</label>
-                    <select class="form-control end-estado" required>
-                        <option value="">UF</option>
-                        ${['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
-                            .map(uf => `<option value="${uf}" ${endereco.estado === uf ? 'selected' : ''}>${uf}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>CEP:</label>
-                    <input type="text" class="form-control end-cep" value="${endereco.cep || ''}" placeholder="00000-000" required>
-                </div>
-            </div>
-            <div class="form-group checkbox-group">
-                <label>
-                    <input type="checkbox" class="end-principal" ${endereco.principal ? 'checked' : ''}>
-                    Endereco principal
-                </label>
-            </div>
-        </div>
-    `;
-}
-
-function adicionarEnderecoForm() {
-    const container = document.getElementById('lista-enderecos-form');
-    const index = container.children.length;
-    container.insertAdjacentHTML('beforeend', criarEnderecoFormHTML({}, index));
-}
-
-function removerEnderecoForm(btn) {
-    btn.closest('.endereco-form-item').remove();
-}
-
-function coletarEnderecosForm() {
-    const items = document.querySelectorAll('.endereco-form-item');
-    return Array.from(items).map(item => ({
-        id: item.dataset.id || null,
-        descricao: item.querySelector('.end-descricao').value,
-        destinatario: item.querySelector('.end-destinatario').value,
-        logradouro: item.querySelector('.end-logradouro').value,
-        numero: item.querySelector('.end-numero').value,
-        complemento: item.querySelector('.end-complemento').value,
-        bairro: item.querySelector('.end-bairro').value,
-        cidade: item.querySelector('.end-cidade').value,
-        estado: item.querySelector('.end-estado').value,
-        cep: item.querySelector('.end-cep').value,
-        principal: item.querySelector('.end-principal').checked
-    }));
-}
-
-async function salvarCliente(e) {
-    e.preventDefault();
-
-    const clienteId = document.getElementById('cliente-id').value;
-    const dados = {
-        nome: document.getElementById('cliente-nome').value,
-        documento: document.getElementById('cliente-documento').value,
-        telefone: document.getElementById('cliente-telefone').value,
-        email: document.getElementById('cliente-email').value,
-        observacoes: document.getElementById('cliente-observacoes').value
-    };
-
-    try {
-        if (clienteId) {
-            // Atualizar cliente
-            await api.put(`/api/clientes/${clienteId}`, dados);
-
-            // Atualizar/criar enderecos
-            const enderecos = coletarEnderecosForm();
-            for (const end of enderecos) {
-                if (end.id) {
-                    await api.put(`/api/enderecos/${end.id}`, end);
-                } else {
-                    await api.post(`/api/clientes/${clienteId}/enderecos`, end);
-                }
-            }
-
-            showToast('Cliente atualizado com sucesso', 'success');
+        if (!resultados || resultados.length === 0) {
+            container.innerHTML = '<p class="empty-state">Nenhum resultado encontrado</p>';
         } else {
-            // Criar cliente com enderecos
-            dados.enderecos = coletarEnderecosForm();
-            await api.post('/api/clientes', dados);
-            showToast('Cliente criado com sucesso', 'success');
+            container.innerHTML = resultados.map((item, index) => `
+                <div class="benu-resultado-item" onclick="selecionarResultadoBenu(${index})">
+                    <strong>${item.nome || item.cliente || item.razaoSocial || 'Sem nome'}</strong>
+                    <br>
+                    <small>${item.endereco || item.logradouro || ''} ${item.numero || ''}</small>
+                    <small>${item.cidade || ''} - ${item.uf || item.estado || ''}</small>
+                </div>
+            `).join('');
+            // Guarda resultados para uso posterior
+            state.resultadosBenu = resultados;
         }
 
-        closeModal('modal-cliente');
-        carregarClientes();
+        resultadosDiv.style.display = 'block';
     } catch (error) {
-        showToast(error.message || 'Erro ao salvar cliente', 'error');
-        console.error(error);
+        showToast('Erro ao buscar: ' + error.message, 'error');
     }
+}
+
+function selecionarResultadoBenu(index) {
+    const item = state.resultadosBenu[index];
+    if (!item) return;
+
+    // Preenche o formulario
+    document.getElementById('etiq-nome').value = item.nome || item.cliente || item.razaoSocial || '';
+    document.getElementById('etiq-logradouro').value = item.logradouro || item.endereco || '';
+    document.getElementById('etiq-numero').value = item.numero || '';
+    document.getElementById('etiq-complemento').value = item.complemento || '';
+    document.getElementById('etiq-bairro').value = item.bairro || '';
+    document.getElementById('etiq-cidade').value = item.cidade || '';
+    document.getElementById('etiq-estado').value = item.uf || item.estado || '';
+    document.getElementById('etiq-cep').value = item.cep || '';
+
+    // Mostra o formulario de edicao
+    document.getElementById('card-edicao').style.display = 'block';
+    document.getElementById('card-edicao').scrollIntoView({ behavior: 'smooth' });
+
+    showToast('Dados carregados - edite se necessario', 'success');
+}
+
+// ============== CEP ==============
+
+async function buscarCep() {
+    const cep = document.getElementById('etiq-cep').value.replace(/\D/g, '');
+    if (cep.length !== 8) {
+        showToast('CEP invalido', 'error');
+        return;
+    }
+
+    try {
+        const dados = await api.get(`/api/cep/${cep}`);
+        if (dados) {
+            if (dados.street) document.getElementById('etiq-logradouro').value = dados.street;
+            if (dados.neighborhood) document.getElementById('etiq-bairro').value = dados.neighborhood;
+            if (dados.city) document.getElementById('etiq-cidade').value = dados.city;
+            if (dados.state) document.getElementById('etiq-estado').value = dados.state;
+            showToast('CEP encontrado', 'success');
+        }
+    } catch (error) {
+        showToast('CEP nao encontrado', 'error');
+    }
+}
+
+// ============== Impressao Direta ==============
+
+function getDadosEtiqueta() {
+    return {
+        nome: document.getElementById('etiq-nome').value,
+        destinatario: document.getElementById('etiq-destinatario').value || null,
+        logradouro: document.getElementById('etiq-logradouro').value,
+        numero: document.getElementById('etiq-numero').value,
+        complemento: document.getElementById('etiq-complemento').value,
+        bairro: document.getElementById('etiq-bairro').value,
+        cidade: document.getElementById('etiq-cidade').value,
+        estado: document.getElementById('etiq-estado').value,
+        cep: document.getElementById('etiq-cep').value,
+        tipo_etiqueta: document.getElementById('etiq-tipo').value,
+        quantidade: parseInt(document.getElementById('etiq-quantidade').value) || 1,
+        impressora_id: document.getElementById('etiq-impressora').value || null,
+        incluir_codigo_barras: document.getElementById('etiq-codigo-barras').checked,
+        incluir_remetente: document.getElementById('etiq-remetente').checked
+    };
+}
+
+async function gerarPreview() {
+    const dados = getDadosEtiqueta();
+    try {
+        const response = await fetch('/api/preview/direto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        if (!response.ok) throw new Error('Erro ao gerar preview');
+        const blob = await response.blob();
+        document.getElementById('preview-iframe').src = URL.createObjectURL(blob);
+        document.getElementById('preview-container').style.display = 'block';
+    } catch (error) {
+        showToast('Erro ao gerar preview: ' + error.message, 'error');
+    }
+}
+
+async function downloadEtiqueta() {
+    const dados = getDadosEtiqueta();
+    try {
+        const response = await fetch('/api/download/direto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        if (!response.ok) throw new Error('Erro ao gerar download');
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `etiqueta_${dados.nome.replace(/ /g, '_')}.pdf`;
+        a.click();
+    } catch (error) {
+        showToast('Erro ao fazer download: ' + error.message, 'error');
+    }
+}
+
+async function imprimirEtiqueta(e) {
+    e.preventDefault();
+    const dados = getDadosEtiqueta();
+
+    if (!dados.nome || !dados.logradouro || !dados.cidade || !dados.cep) {
+        showToast('Preencha todos os campos obrigatorios', 'error');
+        return;
+    }
+
+    try {
+        await api.post('/api/imprimir/direto', dados);
+        showToast('Etiqueta enviada para impressao!', 'success');
+    } catch (error) {
+        showToast('Erro ao imprimir: ' + error.message, 'error');
+    }
+}
+
+function limparFormulario() {
+    document.getElementById('form-etiqueta').reset();
+    document.getElementById('preview-container').style.display = 'none';
 }
 
 // ============== Impressoras ==============
@@ -338,24 +275,20 @@ async function carregarImpressoras() {
         atualizarSelectImpressoras();
     } catch (error) {
         showToast('Erro ao carregar impressoras', 'error');
-        console.error(error);
     }
 }
 
 function renderizarImpressoras() {
     const tbody = document.getElementById('lista-impressoras');
-
     if (state.impressoras.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>Nenhuma impressora cadastrada</p></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma impressora cadastrada</td></tr>';
         return;
     }
-
     tbody.innerHTML = state.impressoras.map(imp => `
         <tr>
             <td>${imp.nome}</td>
             <td>${imp.nome_sistema}</td>
             <td>${imp.tipo}</td>
-            <td>${imp.modelo || '-'}</td>
             <td><span class="status-badge ${imp.ativa ? 'enabled' : 'disabled'}">${imp.ativa ? 'Ativa' : 'Inativa'}</span></td>
             <td class="actions">
                 <button class="btn btn-sm btn-info" onclick="testarImpressora(${imp.id})">Testar</button>
@@ -367,8 +300,8 @@ function renderizarImpressoras() {
 }
 
 function atualizarSelectImpressoras() {
-    const select = document.getElementById('select-impressora');
-    select.innerHTML = '<option value="">-- Usar padrao configurada --</option>';
+    const select = document.getElementById('etiq-impressora');
+    select.innerHTML = '<option value="">-- Usar padrao --</option>';
     state.impressoras.forEach(imp => {
         select.innerHTML += `<option value="${imp.id}">${imp.nome}</option>`;
     });
@@ -391,35 +324,32 @@ function novaImpressora() {
 }
 
 function editarImpressora(id) {
-    const impressora = state.impressoras.find(i => i.id === id);
-    if (!impressora) return;
-
+    const imp = state.impressoras.find(i => i.id === id);
+    if (!imp) return;
     document.getElementById('modal-impressora-titulo').textContent = 'Editar Impressora';
-    document.getElementById('impressora-id').value = impressora.id;
-    document.getElementById('impressora-nome').value = impressora.nome;
-    document.getElementById('impressora-nome-sistema').value = impressora.nome_sistema;
-    document.getElementById('impressora-tipo').value = impressora.tipo;
-    document.getElementById('impressora-modelo').value = impressora.modelo || '';
-    document.getElementById('impressora-localizacao').value = impressora.localizacao || '';
+    document.getElementById('impressora-id').value = imp.id;
+    document.getElementById('impressora-nome').value = imp.nome;
+    document.getElementById('impressora-nome-sistema').value = imp.nome_sistema;
+    document.getElementById('impressora-tipo').value = imp.tipo;
+    document.getElementById('impressora-modelo').value = imp.modelo || '';
+    document.getElementById('impressora-localizacao').value = imp.localizacao || '';
     openModal('modal-impressora');
 }
 
 async function excluirImpressora(id) {
-    if (!confirm('Deseja realmente excluir esta impressora?')) return;
-
+    if (!confirm('Excluir esta impressora?')) return;
     try {
         await api.delete(`/api/impressoras/${id}`);
-        showToast('Impressora excluida com sucesso', 'success');
+        showToast('Impressora excluida', 'success');
         carregarImpressoras();
     } catch (error) {
-        showToast('Erro ao excluir impressora', 'error');
+        showToast('Erro ao excluir', 'error');
     }
 }
 
 async function salvarImpressora(e) {
     e.preventDefault();
-
-    const impressoraId = document.getElementById('impressora-id').value;
+    const id = document.getElementById('impressora-id').value;
     const dados = {
         nome: document.getElementById('impressora-nome').value,
         nome_sistema: document.getElementById('impressora-nome-sistema').value,
@@ -427,20 +357,17 @@ async function salvarImpressora(e) {
         modelo: document.getElementById('impressora-modelo').value,
         localizacao: document.getElementById('impressora-localizacao').value
     };
-
     try {
-        if (impressoraId) {
-            await api.put(`/api/impressoras/${impressoraId}`, dados);
-            showToast('Impressora atualizada com sucesso', 'success');
+        if (id) {
+            await api.put(`/api/impressoras/${id}`, dados);
         } else {
             await api.post('/api/impressoras', dados);
-            showToast('Impressora criada com sucesso', 'success');
         }
-
+        showToast('Impressora salva', 'success');
         closeModal('modal-impressora');
         carregarImpressoras();
     } catch (error) {
-        showToast(error.message || 'Erro ao salvar impressora', 'error');
+        showToast('Erro ao salvar', 'error');
     }
 }
 
@@ -448,26 +375,19 @@ async function detectarImpressorasSistema() {
     try {
         const impressoras = await api.get('/api/impressoras/sistema');
         const container = document.getElementById('lista-impressoras-sistema');
-
         if (impressoras.length === 0) {
-            container.innerHTML = '<p class="empty-state">Nenhuma impressora detectada no sistema</p>';
+            container.innerHTML = '<p class="empty-state">Nenhuma impressora detectada</p>';
         } else {
             container.innerHTML = impressoras.map(imp => `
                 <div class="impressora-sistema-item">
-                    <div class="impressora-sistema-info">
-                        <h4>${imp.name}</h4>
-                        <span class="status-badge ${imp.enabled ? 'enabled' : 'disabled'}">
-                            ${imp.enabled ? 'Habilitada' : 'Desabilitada'}
-                        </span>
-                        ${imp.is_default ? '<span class="status-badge enabled">Padrao</span>' : ''}
+                    <div>
+                        <strong>${imp.name}</strong>
+                        <span class="status-badge ${imp.enabled ? 'enabled' : 'disabled'}">${imp.enabled ? 'Ativa' : 'Inativa'}</span>
                     </div>
-                    <button class="btn btn-sm btn-primary" onclick="adicionarImpressoraSistema('${imp.name}')">
-                        Adicionar
-                    </button>
+                    <button class="btn btn-sm btn-primary" onclick="adicionarImpressoraSistema('${imp.name}')">Adicionar</button>
                 </div>
             `).join('');
         }
-
         openModal('modal-impressoras-sistema');
     } catch (error) {
         showToast('Erro ao detectar impressoras', 'error');
@@ -483,230 +403,25 @@ function adicionarImpressoraSistema(nome) {
     openModal('modal-impressora');
 }
 
-// ============== Configuracoes do Sistema (Settings) ==============
-
-async function carregarSettings() {
-    try {
-        const settings = await api.get('/api/settings');
-
-        // Benu ERP
-        if (settings.benu_api) {
-            const benuToken = document.getElementById('benu-token');
-            if (benuToken) {
-                benuToken.value = settings.benu_api.token || '';
-            }
-        }
-
-        // Etiquetas
-        if (settings.etiquetas) {
-            const dpi = document.getElementById('etiqueta-dpi');
-            const fonte = document.getElementById('etiqueta-fonte');
-            const cepnet = document.getElementById('etiqueta-cepnet');
-            const datamatrix = document.getElementById('etiqueta-datamatrix');
-
-            if (dpi) dpi.value = settings.etiquetas.resolucao_dpi || 300;
-            if (fonte) fonte.value = settings.etiquetas.tamanho_fonte_min || 10;
-            if (cepnet) cepnet.checked = settings.etiquetas.incluir_cepnet !== false;
-            if (datamatrix) datamatrix.checked = settings.etiquetas.incluir_datamatrix || false;
-        }
-
-        // Data Matrix
-        if (settings.datamatrix) {
-            const idv = document.getElementById('datamatrix-idv');
-            const cnae = document.getElementById('datamatrix-cnae');
-
-            if (idv) idv.value = settings.datamatrix.idv_padrao || '03';
-            if (cnae) cnae.value = settings.datamatrix.cnae || '';
-        }
-    } catch (error) {
-        console.error('Erro ao carregar settings:', error);
-    }
-}
-
-async function salvarTokenBenu() {
-    const tokenField = document.getElementById('benu-token');
-    if (!tokenField) return;
-
-    const token = tokenField.value;
-
-    try {
-        await api.post('/api/settings/benu/token', { token: token });
-        showToast('Token Benu atualizado com sucesso', 'success');
-    } catch (error) {
-        showToast('Erro ao salvar token Benu', 'error');
-    }
-}
-
-async function testarConexaoBenu() {
-    try {
-        const result = await api.get('/api/settings/benu/test');
-        if (result.success) {
-            showToast('Conexao com Benu ERP OK!', 'success');
-        } else {
-            showToast(result.error || 'Falha na conexao', 'error');
-        }
-    } catch (error) {
-        showToast('Erro ao testar conexao Benu', 'error');
-    }
-}
-
-async function salvarConfigEtiquetas() {
-    const dpi = document.getElementById('etiqueta-dpi');
-    const fonte = document.getElementById('etiqueta-fonte');
-    const cepnet = document.getElementById('etiqueta-cepnet');
-    const datamatrix = document.getElementById('etiqueta-datamatrix');
-
-    const dados = {
-        resolucao_dpi: dpi ? parseInt(dpi.value) || 300 : 300,
-        tamanho_fonte_min: fonte ? parseInt(fonte.value) || 10 : 10,
-        incluir_cepnet: cepnet ? cepnet.checked : true,
-        incluir_datamatrix: datamatrix ? datamatrix.checked : false
-    };
-
-    try {
-        await api.post('/api/settings/etiquetas', dados);
-        showToast('Configuracoes de etiqueta salvas', 'success');
-    } catch (error) {
-        showToast('Erro ao salvar configuracoes', 'error');
-    }
-}
-
-async function salvarConfigDataMatrix() {
-    const idvField = document.getElementById('datamatrix-idv');
-    const cnaeField = document.getElementById('datamatrix-cnae');
-
-    const dados = {
-        idv_padrao: idvField ? idvField.value || '03' : '03',
-        cnae: cnaeField ? cnaeField.value || '' : ''
-    };
-
-    try {
-        await api.post('/api/settings/datamatrix', dados);
-        showToast('Configuracoes Data Matrix salvas', 'success');
-    } catch (error) {
-        showToast('Erro ao salvar configuracoes Data Matrix', 'error');
-    }
-}
-
-// ============== Auto-preenchimento de CEP ==============
-
-async function consultarCep(cepInput) {
-    const cep = cepInput.replace(/\D/g, '');
-    if (cep.length !== 8) return null;
-
-    try {
-        const result = await api.get(`/api/cep/${cep}`);
-        return result;
-    } catch (error) {
-        console.error('Erro ao consultar CEP:', error);
-        return null;
-    }
-}
-
-function initCepAutoFill() {
-    // Observar mudancas nos campos de CEP nos formularios de endereco
-    document.addEventListener('change', async (e) => {
-        if (e.target.classList.contains('end-cep')) {
-            const cep = e.target.value;
-            if (cep.replace(/\D/g, '').length === 8) {
-                const dadosCep = await consultarCep(cep);
-                if (dadosCep && dadosCep.cep) {
-                    const container = e.target.closest('.endereco-form-item');
-                    if (container) {
-                        const logradouro = container.querySelector('.end-logradouro');
-                        const bairro = container.querySelector('.end-bairro');
-                        const cidade = container.querySelector('.end-cidade');
-                        const estado = container.querySelector('.end-estado');
-
-                        if (logradouro && !logradouro.value && dadosCep.street) {
-                            logradouro.value = dadosCep.street;
-                        }
-                        if (bairro && !bairro.value && dadosCep.neighborhood) {
-                            bairro.value = dadosCep.neighborhood;
-                        }
-                        if (cidade && !cidade.value && dadosCep.city) {
-                            cidade.value = dadosCep.city;
-                        }
-                        if (estado && dadosCep.state) {
-                            estado.value = dadosCep.state;
-                        }
-
-                        showToast('CEP encontrado - endereco preenchido', 'success');
-                    }
-                }
-            }
-        }
-    });
-
-    // CEP do remetente
-    const cepRemetente = document.getElementById('rem-cep');
-    if (cepRemetente) {
-        cepRemetente.addEventListener('change', async (e) => {
-            const cep = e.target.value;
-            if (cep.replace(/\D/g, '').length === 8) {
-                const dadosCep = await consultarCep(cep);
-                if (dadosCep && dadosCep.cep) {
-                    const logradouro = document.getElementById('rem-logradouro');
-                    const bairro = document.getElementById('rem-bairro');
-                    const cidade = document.getElementById('rem-cidade');
-                    const estado = document.getElementById('rem-estado');
-
-                    if (logradouro && !logradouro.value && dadosCep.street) {
-                        logradouro.value = dadosCep.street;
-                    }
-                    if (bairro && !bairro.value && dadosCep.neighborhood) {
-                        bairro.value = dadosCep.neighborhood;
-                    }
-                    if (cidade && !cidade.value && dadosCep.city) {
-                        cidade.value = dadosCep.city;
-                    }
-                    if (estado && dadosCep.state) {
-                        estado.value = dadosCep.state;
-                    }
-
-                    showToast('CEP do remetente preenchido', 'success');
-                }
-            }
-        });
-    }
-}
-
-// ============== Tipos de Etiqueta e Configuracoes ==============
-
-async function carregarTiposEtiqueta() {
-    try {
-        state.tiposEtiqueta = await api.get('/api/tipos-etiqueta');
-        atualizarSelectTiposEtiqueta();
-        carregarConfiguracoes();
-    } catch (error) {
-        showToast('Erro ao carregar tipos de etiqueta', 'error');
-    }
-}
-
-function atualizarSelectTiposEtiqueta() {
-    const select = document.getElementById('select-tipo-etiqueta');
-    select.innerHTML = '<option value="">-- Selecione o tipo --</option>';
-    state.tiposEtiqueta.forEach(tipo => {
-        select.innerHTML += `<option value="${tipo.id}">${tipo.name}</option>`;
-    });
-}
+// ============== Configuracoes ==============
 
 async function carregarConfiguracoes() {
     try {
         const configs = await api.get('/api/configuracoes-etiqueta');
         const container = document.getElementById('config-etiquetas');
-
-        container.innerHTML = state.tiposEtiqueta.map(tipo => {
+        const tipos = [
+            { id: 'thermal_60x30', name: 'Termica 60x30mm' },
+            { id: 'thermal_100x80', name: 'Termica 100x80mm' }
+        ];
+        container.innerHTML = tipos.map(tipo => {
             const config = configs.find(c => c.tipo_etiqueta === tipo.id);
             return `
-                <div class="config-item">
+                <div class="config-item" style="margin-bottom: 10px;">
                     <label>${tipo.name}:</label>
-                    <select class="form-control" onchange="salvarConfiguracao('${tipo.id}', this.value)">
+                    <select class="form-control" onchange="salvarConfiguracaoEtiqueta('${tipo.id}', this.value)">
                         <option value="">-- Nenhuma --</option>
                         ${state.impressoras.map(imp => `
-                            <option value="${imp.id}" ${config && config.impressora_id === imp.id ? 'selected' : ''}>
-                                ${imp.nome}
-                            </option>
+                            <option value="${imp.id}" ${config && config.impressora_id === imp.id ? 'selected' : ''}>${imp.nome}</option>
                         `).join('')}
                     </select>
                 </div>
@@ -717,29 +432,84 @@ async function carregarConfiguracoes() {
     }
 }
 
-async function salvarConfiguracao(tipoEtiqueta, impressoraId) {
+async function salvarConfiguracaoEtiqueta(tipo, impressoraId) {
     try {
-        await api.put(`/api/configuracoes-etiqueta/${tipoEtiqueta}?impressora_id=${impressoraId || ''}`);
+        await api.put(`/api/configuracoes-etiqueta/${tipo}?impressora_id=${impressoraId || ''}`);
         showToast('Configuracao salva', 'success');
     } catch (error) {
-        showToast('Erro ao salvar configuracao', 'error');
+        showToast('Erro ao salvar', 'error');
     }
 }
 
-// ============== Remetente ==============
+async function carregarSettings() {
+    try {
+        const settings = await api.get('/api/settings');
+        if (settings.benu_api) {
+            const token = document.getElementById('benu-token');
+            if (token) token.value = settings.benu_api.token || '';
+        }
+        if (settings.etiquetas) {
+            const dpi = document.getElementById('etiqueta-dpi');
+            const fonte = document.getElementById('etiqueta-fonte');
+            const cepnet = document.getElementById('etiqueta-cepnet');
+            const datamatrix = document.getElementById('etiqueta-datamatrix');
+            if (dpi) dpi.value = settings.etiquetas.resolucao_dpi || 300;
+            if (fonte) fonte.value = settings.etiquetas.tamanho_fonte_min || 10;
+            if (cepnet) cepnet.checked = settings.etiquetas.incluir_cepnet !== false;
+            if (datamatrix) datamatrix.checked = settings.etiquetas.incluir_datamatrix || false;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar settings:', error);
+    }
+}
+
+async function salvarTokenBenu() {
+    const token = document.getElementById('benu-token').value;
+    try {
+        await api.post('/api/settings/benu/token', { token });
+        showToast('Token salvo', 'success');
+        verificarStatusBenu();
+    } catch (error) {
+        showToast('Erro ao salvar token', 'error');
+    }
+}
+
+async function testarConexaoBenu() {
+    try {
+        const result = await api.get('/api/settings/benu/test');
+        showToast(result.success ? 'Conexao OK!' : (result.message || 'Falha'), result.success ? 'success' : 'error');
+    } catch (error) {
+        showToast('Erro ao testar conexao', 'error');
+    }
+}
+
+async function salvarConfigEtiquetas() {
+    const dados = {
+        resolucao_dpi: parseInt(document.getElementById('etiqueta-dpi').value) || 300,
+        tamanho_fonte_min: parseInt(document.getElementById('etiqueta-fonte').value) || 10,
+        incluir_cepnet: document.getElementById('etiqueta-cepnet').checked,
+        incluir_datamatrix: document.getElementById('etiqueta-datamatrix').checked
+    };
+    try {
+        await api.post('/api/settings/etiquetas', dados);
+        showToast('Configuracoes salvas', 'success');
+    } catch (error) {
+        showToast('Erro ao salvar', 'error');
+    }
+}
 
 async function carregarRemetente() {
     try {
-        const remetente = await api.get('/api/remetente');
-        if (remetente) {
-            document.getElementById('rem-nome').value = remetente.nome || '';
-            document.getElementById('rem-logradouro').value = remetente.logradouro || '';
-            document.getElementById('rem-numero').value = remetente.numero || '';
-            document.getElementById('rem-complemento').value = remetente.complemento || '';
-            document.getElementById('rem-bairro').value = remetente.bairro || '';
-            document.getElementById('rem-cidade').value = remetente.cidade || '';
-            document.getElementById('rem-estado').value = remetente.estado || '';
-            document.getElementById('rem-cep').value = remetente.cep || '';
+        const rem = await api.get('/api/remetente');
+        if (rem) {
+            document.getElementById('rem-nome').value = rem.nome || '';
+            document.getElementById('rem-logradouro').value = rem.logradouro || '';
+            document.getElementById('rem-numero').value = rem.numero || '';
+            document.getElementById('rem-complemento').value = rem.complemento || '';
+            document.getElementById('rem-bairro').value = rem.bairro || '';
+            document.getElementById('rem-cidade').value = rem.cidade || '';
+            document.getElementById('rem-estado').value = rem.estado || '';
+            document.getElementById('rem-cep').value = rem.cep || '';
         }
     } catch (error) {
         console.error(error);
@@ -748,7 +518,6 @@ async function carregarRemetente() {
 
 async function salvarRemetente(e) {
     e.preventDefault();
-
     const dados = {
         nome: document.getElementById('rem-nome').value,
         logradouro: document.getElementById('rem-logradouro').value,
@@ -759,246 +528,96 @@ async function salvarRemetente(e) {
         estado: document.getElementById('rem-estado').value,
         cep: document.getElementById('rem-cep').value
     };
-
     try {
         await api.post('/api/remetente', dados);
-        showToast('Remetente salvo com sucesso', 'success');
+        showToast('Remetente salvo', 'success');
     } catch (error) {
         showToast('Erro ao salvar remetente', 'error');
     }
 }
 
-// ============== Impressao ==============
+// ============== Atualizacoes ==============
 
-async function carregarEnderecos(clienteId) {
+async function carregarVersao() {
     try {
-        const enderecos = await api.get(`/api/clientes/${clienteId}/enderecos`);
-        const select = document.getElementById('select-endereco');
-        select.innerHTML = '<option value="">-- Selecione um endereco --</option>';
-
-        enderecos.forEach(end => {
-            const descricao = end.descricao ? `(${end.descricao}) ` : '';
-            select.innerHTML += `<option value="${end.id}">${descricao}${end.logradouro}, ${end.numero} - ${end.cidade}/${end.estado}</option>`;
-        });
-
-        select.disabled = false;
-        state.clienteSelecionado = await api.get(`/api/clientes/${clienteId}`);
-    } catch (error) {
-        showToast('Erro ao carregar enderecos', 'error');
-    }
-}
-
-function exibirEndereco(enderecoId) {
-    if (!state.clienteSelecionado) return;
-
-    const endereco = state.clienteSelecionado.enderecos.find(e => e.id == enderecoId);
-    if (!endereco) {
-        document.getElementById('endereco-preview').style.display = 'none';
-        state.enderecoSelecionado = null;
-        atualizarBotoes();
-        return;
-    }
-
-    state.enderecoSelecionado = endereco;
-    const cep = endereco.cep.includes('-') ? endereco.cep : `${endereco.cep.substring(0, 5)}-${endereco.cep.substring(5)}`;
-
-    document.getElementById('endereco-detalhes').innerHTML = `
-        <strong>${endereco.destinatario || state.clienteSelecionado.nome}</strong><br>
-        ${endereco.logradouro}, ${endereco.numero}${endereco.complemento ? ` - ${endereco.complemento}` : ''}<br>
-        ${endereco.bairro}<br>
-        <strong>${cep}</strong> - ${endereco.cidade}/${endereco.estado}
-    `;
-
-    document.getElementById('endereco-preview').style.display = 'block';
-    atualizarBotoes();
-}
-
-function atualizarBotoes() {
-    const temCliente = state.clienteSelecionado !== null;
-    const temEndereco = state.enderecoSelecionado !== null;
-    const temTipo = document.getElementById('select-tipo-etiqueta').value !== '';
-
-    const habilitar = temCliente && temEndereco && temTipo;
-    document.getElementById('btn-preview').disabled = !habilitar;
-    document.getElementById('btn-download').disabled = !habilitar;
-    document.getElementById('btn-imprimir').disabled = !habilitar;
-}
-
-async function gerarPreview() {
-    const dados = {
-        cliente_id: state.clienteSelecionado.id,
-        endereco_id: state.enderecoSelecionado.id,
-        tipo_etiqueta: document.getElementById('select-tipo-etiqueta').value,
-        incluir_codigo_barras: document.getElementById('incluir-barcode').checked,
-        incluir_remetente: document.getElementById('incluir-remetente').checked
-    };
-
-    try {
-        const response = await fetch('/api/preview', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dados)
-        });
-
-        if (!response.ok) throw new Error('Erro ao gerar preview');
-
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-
-        document.getElementById('preview-iframe').src = url;
-        document.getElementById('preview-container').style.display = 'block';
-    } catch (error) {
-        showToast('Erro ao gerar preview', 'error');
-    }
-}
-
-async function downloadEtiqueta() {
-    const dados = {
-        cliente_id: state.clienteSelecionado.id,
-        endereco_id: state.enderecoSelecionado.id,
-        tipo_etiqueta: document.getElementById('select-tipo-etiqueta').value,
-        incluir_codigo_barras: document.getElementById('incluir-barcode').checked,
-        incluir_remetente: document.getElementById('incluir-remetente').checked
-    };
-
-    try {
-        const response = await fetch('/api/download', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dados)
-        });
-
-        if (!response.ok) throw new Error('Erro ao gerar download');
-
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `etiqueta_${state.clienteSelecionado.nome.replace(/ /g, '_')}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } catch (error) {
-        showToast('Erro ao fazer download', 'error');
-    }
-}
-
-async function imprimir() {
-    const impressoraId = document.getElementById('select-impressora').value;
-    const dados = {
-        cliente_id: state.clienteSelecionado.id,
-        endereco_id: state.enderecoSelecionado.id,
-        tipo_etiqueta: document.getElementById('select-tipo-etiqueta').value,
-        quantidade: parseInt(document.getElementById('quantidade').value) || 1,
-        impressora_id: impressoraId ? parseInt(impressoraId) : null,
-        incluir_codigo_barras: document.getElementById('incluir-barcode').checked,
-        incluir_remetente: document.getElementById('incluir-remetente').checked
-    };
-
-    try {
-        const result = await api.post('/api/imprimir', dados);
-        showToast('Etiqueta enviada para impressao!', 'success');
-    } catch (error) {
-        showToast(error.message || 'Erro ao imprimir', 'error');
-    }
-}
-
-// ============== Busca de Clientes ==============
-
-let buscaTimeout = null;
-
-function initBuscaClientes() {
-    const input = document.getElementById('busca-cliente');
-    input.addEventListener('input', (e) => {
-        clearTimeout(buscaTimeout);
-        buscaTimeout = setTimeout(() => {
-            buscarClientes(e.target.value);
-        }, 300);
-    });
-}
-
-async function buscarClientes(termo) {
-    try {
-        const url = termo ? `/api/clientes?search=${encodeURIComponent(termo)}` : '/api/clientes';
-        state.clientes = await api.get(url);
-        renderizarClientes();
+        const version = await api.get('/api/system/version');
+        document.getElementById('system-version').textContent = `v${version.commit || '3.0'}`;
+        document.getElementById('versao-atual').textContent = version.commit || 'desconhecida';
     } catch (error) {
         console.error(error);
+    }
+}
+
+async function verificarAtualizacao() {
+    try {
+        const result = await api.get('/api/system/update/check');
+        const statusEl = document.getElementById('atualizacao-status');
+        const btnAplicar = document.getElementById('btn-aplicar-atualizacao');
+
+        if (result.available) {
+            statusEl.textContent = `Atualizacao disponivel! ${result.commits_behind} commit(s) atras.`;
+            statusEl.className = 'status-message success';
+            btnAplicar.disabled = false;
+            state.updateAvailable = true;
+        } else {
+            statusEl.textContent = result.message || 'Sistema atualizado';
+            statusEl.className = 'status-message info';
+            btnAplicar.disabled = true;
+        }
+        document.getElementById('ultima-verificacao').textContent = new Date().toLocaleString();
+    } catch (error) {
+        document.getElementById('atualizacao-status').textContent = 'Erro ao verificar: ' + error.message;
+    }
+}
+
+async function aplicarAtualizacao() {
+    if (!confirm('Aplicar atualizacao? O sistema sera reiniciado.')) return;
+    try {
+        const result = await api.post('/api/system/update/apply');
+        showToast(result.message || 'Atualizacao aplicada', 'success');
+        if (result.restart_required) {
+            showToast('Reinicie o servico para aplicar as mudancas', 'info');
+        }
+    } catch (error) {
+        showToast('Erro ao atualizar: ' + error.message, 'error');
     }
 }
 
 // ============== Event Listeners ==============
 
 function initEventListeners() {
-    // Tabs
     initTabs();
-
-    // Modals
     initModals();
 
-    // Forms
-    document.getElementById('form-cliente').addEventListener('submit', salvarCliente);
-    document.getElementById('form-impressora').addEventListener('submit', salvarImpressora);
-    document.getElementById('form-remetente').addEventListener('submit', salvarRemetente);
-
-    // Botoes
-    document.getElementById('btn-novo-cliente').addEventListener('click', novoCliente);
-    document.getElementById('btn-add-endereco').addEventListener('click', adicionarEnderecoForm);
-    document.getElementById('btn-nova-impressora').addEventListener('click', novaImpressora);
-    document.getElementById('btn-detectar-impressoras').addEventListener('click', detectarImpressorasSistema);
-
-    // Selects de impressao
-    document.getElementById('select-cliente').addEventListener('change', (e) => {
-        if (e.target.value) {
-            carregarEnderecos(e.target.value);
-        } else {
-            document.getElementById('select-endereco').innerHTML = '<option value="">-- Selecione um endereco --</option>';
-            document.getElementById('select-endereco').disabled = true;
-            document.getElementById('endereco-preview').style.display = 'none';
-            state.clienteSelecionado = null;
-            state.enderecoSelecionado = null;
-            atualizarBotoes();
-        }
+    // Benu
+    document.getElementById('btn-buscar-benu').addEventListener('click', buscarNoBenu);
+    document.getElementById('benu-termo').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') buscarNoBenu();
     });
 
-    document.getElementById('select-endereco').addEventListener('change', (e) => {
-        exibirEndereco(e.target.value);
-    });
+    // CEP
+    document.getElementById('btn-buscar-cep').addEventListener('click', buscarCep);
 
-    document.getElementById('select-tipo-etiqueta').addEventListener('change', atualizarBotoes);
-
-    // Botoes de impressao
+    // Etiqueta
+    document.getElementById('form-etiqueta').addEventListener('submit', imprimirEtiqueta);
     document.getElementById('btn-preview').addEventListener('click', gerarPreview);
     document.getElementById('btn-download').addEventListener('click', downloadEtiqueta);
-    document.getElementById('btn-imprimir').addEventListener('click', imprimir);
+    document.getElementById('btn-limpar-form').addEventListener('click', limparFormulario);
 
-    // Busca
-    initBuscaClientes();
+    // Impressoras
+    document.getElementById('btn-nova-impressora').addEventListener('click', novaImpressora);
+    document.getElementById('btn-detectar-impressoras').addEventListener('click', detectarImpressorasSistema);
+    document.getElementById('form-impressora').addEventListener('submit', salvarImpressora);
 
-    // Auto-preenchimento de CEP
-    initCepAutoFill();
+    // Configuracoes
+    document.getElementById('btn-salvar-benu-token').addEventListener('click', salvarTokenBenu);
+    document.getElementById('btn-testar-benu').addEventListener('click', testarConexaoBenu);
+    document.getElementById('btn-salvar-etiqueta-config').addEventListener('click', salvarConfigEtiquetas);
+    document.getElementById('form-remetente').addEventListener('submit', salvarRemetente);
 
-    // Botoes de configuracoes do sistema
-    const btnSalvarBenu = document.getElementById('btn-salvar-benu-token');
-    if (btnSalvarBenu) {
-        btnSalvarBenu.addEventListener('click', salvarTokenBenu);
-    }
-
-    const btnTestarBenu = document.getElementById('btn-testar-benu');
-    if (btnTestarBenu) {
-        btnTestarBenu.addEventListener('click', testarConexaoBenu);
-    }
-
-    const btnSalvarEtiquetas = document.getElementById('btn-salvar-etiqueta-config');
-    if (btnSalvarEtiquetas) {
-        btnSalvarEtiquetas.addEventListener('click', salvarConfigEtiquetas);
-    }
-
-    const btnSalvarDatamatrix = document.getElementById('btn-salvar-datamatrix');
-    if (btnSalvarDatamatrix) {
-        btnSalvarDatamatrix.addEventListener('click', salvarConfigDataMatrix);
-    }
+    // Atualizacoes
+    document.getElementById('btn-verificar-atualizacao').addEventListener('click', verificarAtualizacao);
+    document.getElementById('btn-aplicar-atualizacao').addEventListener('click', aplicarAtualizacao);
 }
 
 // ============== Inicializacao ==============
@@ -1006,12 +625,16 @@ function initEventListeners() {
 document.addEventListener('DOMContentLoaded', async () => {
     initEventListeners();
 
-    // Carregar dados iniciais
+    // Mostra formulario de edicao vazio para entrada manual
+    document.getElementById('card-edicao').style.display = 'block';
+
     await Promise.all([
-        carregarClientes(),
         carregarImpressoras(),
-        carregarTiposEtiqueta(),
         carregarRemetente(),
-        carregarSettings()
+        carregarSettings(),
+        verificarStatusBenu(),
+        carregarVersao()
     ]);
+
+    carregarConfiguracoes();
 });

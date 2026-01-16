@@ -117,20 +117,39 @@ async function buscarNoBenu() {
 
     try {
         showToast('Buscando...', 'info');
-        const resultados = await api.post('/api/benu/buscar', { tipo, termo });
+        let resultados = await api.post('/api/benu/buscar', { tipo, termo });
 
         const container = document.getElementById('benu-lista-resultados');
         const resultadosDiv = document.getElementById('benu-resultados');
 
-        if (!resultados || resultados.length === 0) {
+        // Normaliza resultado para array
+        if (!resultados) {
+            resultados = [];
+        } else if (!Array.isArray(resultados)) {
+            // Se for objeto, tenta extrair array de propriedades comuns
+            if (resultados.data && Array.isArray(resultados.data)) {
+                resultados = resultados.data;
+            } else if (resultados.lista && Array.isArray(resultados.lista)) {
+                resultados = resultados.lista;
+            } else if (resultados.items && Array.isArray(resultados.items)) {
+                resultados = resultados.items;
+            } else if (resultados.content && Array.isArray(resultados.content)) {
+                resultados = resultados.content;
+            } else {
+                // Transforma objeto unico em array
+                resultados = [resultados];
+            }
+        }
+
+        if (resultados.length === 0) {
             container.innerHTML = '<p class="empty-state">Nenhum resultado encontrado</p>';
         } else {
             container.innerHTML = resultados.map((item, index) => `
                 <div class="benu-resultado-item" onclick="selecionarResultadoBenu(${index})">
-                    <strong>${item.nome || item.cliente || item.razaoSocial || 'Sem nome'}</strong>
+                    <strong>${item.nome || item.cliente || item.razaoSocial || item.nomeCliente || item.nmCliente || 'Sem nome'}</strong>
                     <br>
-                    <small>${item.endereco || item.logradouro || ''} ${item.numero || ''}</small>
-                    <small>${item.cidade || ''} - ${item.uf || item.estado || ''}</small>
+                    <small>${item.endereco || item.logradouro || item.dsEndereco || ''} ${item.numero || item.nrEndereco || ''}</small>
+                    <small>${item.cidade || item.nmCidade || ''} - ${item.uf || item.estado || item.sgEstado || ''}</small>
                 </div>
             `).join('');
             // Guarda resultados para uso posterior
@@ -138,8 +157,10 @@ async function buscarNoBenu() {
         }
 
         resultadosDiv.style.display = 'block';
+        showToast(`${resultados.length} resultado(s) encontrado(s)`, 'success');
     } catch (error) {
         showToast('Erro ao buscar: ' + error.message, 'error');
+        console.error('Erro completo:', error);
     }
 }
 
@@ -147,19 +168,38 @@ function selecionarResultadoBenu(index) {
     const item = state.resultadosBenu[index];
     if (!item) return;
 
-    // Preenche o formulario
-    document.getElementById('etiq-nome').value = item.nome || item.cliente || item.razaoSocial || '';
-    document.getElementById('etiq-logradouro').value = item.logradouro || item.endereco || '';
-    document.getElementById('etiq-numero').value = item.numero || '';
-    document.getElementById('etiq-complemento').value = item.complemento || '';
-    document.getElementById('etiq-bairro').value = item.bairro || '';
-    document.getElementById('etiq-cidade').value = item.cidade || '';
-    document.getElementById('etiq-estado').value = item.uf || item.estado || '';
-    document.getElementById('etiq-cep').value = item.cep || '';
+    // Preenche o formulario (considera diferentes nomes de campos do Benu)
+    document.getElementById('etiq-nome').value =
+        item.nome || item.cliente || item.razaoSocial || item.nomeCliente ||
+        item.nmCliente || item.nmRazaoSocial || item.dsNome || '';
+
+    document.getElementById('etiq-logradouro').value =
+        item.logradouro || item.endereco || item.dsEndereco || item.dsLogradouro || '';
+
+    document.getElementById('etiq-numero').value =
+        item.numero || item.nrEndereco || item.nrNumero || '';
+
+    document.getElementById('etiq-complemento').value =
+        item.complemento || item.dsComplemento || '';
+
+    document.getElementById('etiq-bairro').value =
+        item.bairro || item.dsBairro || item.nmBairro || '';
+
+    document.getElementById('etiq-cidade').value =
+        item.cidade || item.nmCidade || item.dsCidade || '';
+
+    document.getElementById('etiq-estado').value =
+        item.uf || item.estado || item.sgEstado || item.sgUf || '';
+
+    document.getElementById('etiq-cep').value =
+        item.cep || item.nrCep || item.cdCep || '';
 
     // Mostra o formulario de edicao
     document.getElementById('card-edicao').style.display = 'block';
     document.getElementById('card-edicao').scrollIntoView({ behavior: 'smooth' });
+
+    // Mostra os dados brutos no console para debug
+    console.log('Dados do Benu selecionados:', item);
 
     showToast('Dados carregados - edite se necessario', 'success');
 }

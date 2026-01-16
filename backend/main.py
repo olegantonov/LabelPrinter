@@ -301,6 +301,18 @@ def verificar_atualizacao():
     """Verifica se ha atualizacoes disponiveis"""
     return updater_service.check_for_updates()
 
+@app.get("/api/system/debug")
+def debug_sistema():
+    """Retorna informacoes de debug do sistema"""
+    import os
+    return {
+        "updater_status": updater_service.get_status(),
+        "benu_token_configured": bool(benu_service.token),
+        "benu_base_url": benu_service.BASE_URL,
+        "cwd": os.getcwd(),
+        "env_path": os.environ.get("PATH", "")[:200]
+    }
+
 @app.post("/api/system/update/apply")
 def aplicar_atualizacao():
     """Aplica atualizacoes disponiveis (requer reinicio)"""

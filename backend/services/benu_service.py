@@ -102,10 +102,14 @@ class BenuService:
                 if response.status_code == 401:
                     return {"success": False, "message": "Token invalido ou expirado"}
 
-                if response.status_code == 200:
+                # 200 = OK, 204 = No Content (ambos sao sucesso)
+                if response.status_code in [200, 204]:
                     return {"success": True, "message": "Conexao OK"}
 
-                return {"success": False, "message": f"Erro HTTP {response.status_code}"}
+                if response.status_code >= 400:
+                    return {"success": False, "message": f"Erro HTTP {response.status_code}"}
+
+                return {"success": True, "message": "Conexao OK"}
 
         except httpx.TimeoutException:
             return {"success": False, "message": "Timeout na conexao"}

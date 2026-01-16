@@ -173,20 +173,17 @@ async def benu_buscar(request: BenuSearchRequest):
 
     if request.tipo == "os":
         result = await benu_service.buscar_os(
-            termo=request.termo,
+            nome_cliente=request.termo,
             data_inicio=request.data_inicio,
             data_fim=request.data_fim
         )
     elif request.tipo == "orcamentos":
         result = await benu_service.buscar_orcamentos(
-            termo=request.termo,
             data_inicio=request.data_inicio,
             data_fim=request.data_fim
         )
     elif request.tipo == "crm":
-        result = await benu_service.consultar_cards_crm(
-            termo_busca=request.termo
-        )
+        result = await benu_service.consultar_cards_crm()
     else:
         raise HTTPException(status_code=400, detail="Tipo de busca invalido")
 
@@ -196,43 +193,66 @@ async def benu_buscar(request: BenuSearchRequest):
             detail=result.get("message")
         )
 
-    return result.get("data", [])
+    # Extrai dados da resposta - pode vir em diferentes formatos
+    dados = result.get("data", [])
+
+    # Se vier um objeto com propriedade servicos/orcamentos/etc, extrai
+    if isinstance(dados, dict):
+        if "servicos" in dados:
+            dados = dados["servicos"]
+        elif "orcamentos" in dados:
+            dados = dados["orcamentos"]
+        elif "cards" in dados:
+            dados = dados["cards"]
+        elif "lista" in dados:
+            dados = dados["lista"]
+
+    # Garante que retorna lista
+    if not isinstance(dados, list):
+        dados = [dados] if dados else []
+
+    return dados
 
 @app.get("/api/benu/os")
 async def benu_listar_os(
-    termo: Optional[str] = None,
+    nome_cliente: Optional[str] = None,
     data_inicio: Optional[str] = None,
     data_fim: Optional[str] = None
 ):
     """Lista Ordens de Servico do Benu ERP"""
     result = await benu_service.buscar_os(
-        termo=termo,
+        nome_cliente=nome_cliente,
         data_inicio=data_inicio,
         data_fim=data_fim
     )
     if result.get("error"):
         raise HTTPException(status_code=result.get("code", 500), detail=result.get("message"))
-    return result.get("data", [])
+
+    dados = result.get("data", [])
+    if isinstance(dados, dict) and "servicos" in dados:
+        dados = dados["servicos"]
+    return dados if isinstance(dados, list) else []
 
 @app.get("/api/benu/orcamentos")
 async def benu_listar_orcamentos(
-    termo: Optional[str] = None,
     data_inicio: Optional[str] = None,
     data_fim: Optional[str] = None
 ):
     """Lista Orcamentos do Benu ERP"""
     result = await benu_service.buscar_orcamentos(
-        termo=termo,
         data_inicio=data_inicio,
         data_fim=data_fim
     )
     if result.get("error"):
         raise HTTPException(status_code=result.get("code", 500), detail=result.get("message"))
-    return result.get("data", [])
+
+    dados = result.get("data", [])
+    if isinstance(dados, dict) and "orcamentos" in dados:
+        dados = dados["orcamentos"]
+    return dados if isinstance(dados, list) else []
 
 @app.get("/api/benu/crm")
 async def benu_listar_crm(
-    termo: Optional[str] = None,
     funil: int = 1,
     offset: int = 0,
     limite: int = 100
@@ -241,12 +261,15 @@ async def benu_listar_crm(
     result = await benu_service.consultar_cards_crm(
         cd_funil=funil,
         offset=offset,
-        max_results=limite,
-        termo_busca=termo
+        max_results=limite
     )
     if result.get("error"):
         raise HTTPException(status_code=result.get("code", 500), detail=result.get("message"))
-    return result.get("data", [])
+
+    dados = result.get("data", [])
+    if isinstance(dados, dict) and "cards" in dados:
+        dados = dados["cards"]
+    return dados if isinstance(dados, list) else []
 
 
 # ============== API: Configuracoes do Sistema ==============

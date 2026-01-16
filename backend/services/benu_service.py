@@ -1,10 +1,10 @@
 """
 Servico de integracao com Benu ERP
-Conforme especificacao: BENU_API_INTEGRACAO_COMPLETA.md
+Conforme documentacao oficial da API Benu
 """
 import httpx
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class BenuService:
@@ -72,8 +72,6 @@ class BenuService:
                 if response.status_code >= 500:
                     return {"error": True, "message": "Erro interno do servidor Benu", "code": response.status_code}
 
-                response.raise_for_status()
-
                 # Tenta parsear JSON, se falhar retorna resposta vazia
                 try:
                     data = response.json()
@@ -116,28 +114,36 @@ class BenuService:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    # ============== Busca de Clientes/OS ==============
+    # ============== Busca de OS ==============
 
     async def buscar_os(
         self,
-        termo: Optional[str] = None,
+        nome_cliente: Optional[str] = None,
+        cd_cliente: Optional[int] = None,
         data_inicio: Optional[str] = None,
-        data_fim: Optional[str] = None,
-        status: Optional[str] = None
+        data_fim: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Busca Ordens de Servico com dados de cliente
+        Busca Ordens de Servico
         Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOS
+
+        Parametros obrigatorios: dataInicio e dataFim OU cdServico
         """
-        filtros = {}
-        if termo:
-            filtros["termo"] = termo
-        if data_inicio:
-            filtros["dataInicio"] = data_inicio
-        if data_fim:
-            filtros["dataFim"] = data_fim
-        if status:
-            filtros["status"] = status
+        # Se nao informar datas, usa ultimos 30 dias
+        if not data_inicio:
+            data_inicio = (datetime.now() - timedelta(days=30)).strftime("%d/%m/%Y")
+        if not data_fim:
+            data_fim = datetime.now().strftime("%d/%m/%Y")
+
+        filtros = {
+            "dataInicio": data_inicio,
+            "dataFim": data_fim
+        }
+
+        if nome_cliente:
+            filtros["nmCliente"] = nome_cliente
+        if cd_cliente:
+            filtros["cdCliente"] = cd_cliente
 
         return await self._request(
             "POST",
@@ -145,23 +151,33 @@ class BenuService:
             data=filtros
         )
 
+    # ============== Busca de Orcamentos ==============
+
     async def buscar_orcamentos(
         self,
-        termo: Optional[str] = None,
         data_inicio: Optional[str] = None,
-        data_fim: Optional[str] = None
+        data_fim: Optional[str] = None,
+        cd_vendedor: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Busca Orcamentos com dados de cliente
+        Busca Orcamentos
         Endpoint: POST /new/servicos/servicosOperacionais/retornoRelatorioOrcamentos
+
+        Parametros obrigatorios: inicio e fim
         """
-        filtros = {}
-        if termo:
-            filtros["termo"] = termo
-        if data_inicio:
-            filtros["dataInicio"] = data_inicio
-        if data_fim:
-            filtros["dataFim"] = data_fim
+        # Se nao informar datas, usa ultimos 30 dias
+        if not data_inicio:
+            data_inicio = (datetime.now() - timedelta(days=30)).strftime("%d/%m/%Y")
+        if not data_fim:
+            data_fim = datetime.now().strftime("%d/%m/%Y")
+
+        filtros = {
+            "inicio": data_inicio,
+            "fim": data_fim
+        }
+
+        if cd_vendedor:
+            filtros["cdVendedor"] = cd_vendedor
 
         return await self._request(
             "POST",
@@ -169,34 +185,22 @@ class BenuService:
             data=filtros
         )
 
+    # ============== Busca de Cards CRM ==============
+
     async def consultar_cards_crm(
         self,
         cd_funil: int = 1,
         offset: int = 0,
-        max_results: int = 100,
-        termo_busca: Optional[str] = None
+        max_results: int = 100
     ) -> Dict[str, Any]:
         """
         Consulta cards do CRM (clientes/leads)
         Endpoint: GET /erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cdFunil}/{offSet}/{maxResults}
         """
-        result = await self._request(
+        return await self._request(
             "GET",
             f"/erpCrmWar/servicosCrm/consultaFunil/consultarCards/{cd_funil}/{offset}/{max_results}"
         )
-
-        # Filtra por termo se fornecido
-        if not result.get("error") and termo_busca and result.get("data"):
-            dados = result["data"]
-            if isinstance(dados, list):
-                termo_lower = termo_busca.lower()
-                dados_filtrados = [
-                    item for item in dados
-                    if termo_lower in str(item).lower()
-                ]
-                result["data"] = dados_filtrados
-
-        return result
 
     # ============== Modulo Financeiro ==============
 

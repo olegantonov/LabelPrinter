@@ -73,7 +73,14 @@ class BenuService:
                     return {"error": True, "message": "Erro interno do servidor Benu", "code": response.status_code}
 
                 response.raise_for_status()
-                return {"error": False, "data": response.json()}
+
+                # Tenta parsear JSON, se falhar retorna resposta vazia
+                try:
+                    data = response.json()
+                except Exception:
+                    data = []
+
+                return {"error": False, "data": data}
 
         except httpx.TimeoutException:
             return {"error": True, "message": "Timeout na conexao com Benu ERP"}
@@ -82,17 +89,28 @@ class BenuService:
 
     async def test_connection(self) -> Dict[str, Any]:
         """Testa conexao com a API Benu"""
-        result = await self._request(
-            "GET",
-            "/erpCrmWar/servicosCrm/consultaFunil/consultarCards/1/0/1"
-        )
+        if not self.token:
+            return {"success": False, "message": "Token nao configurado"}
 
-        if result.get("error"):
-            if result.get("code") == 401:
-                return {"success": False, "message": "Token invalido"}
-            return {"success": False, "message": result.get("message", "Erro desconhecido")}
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.BASE_URL}/erpCrmWar/servicosCrm/consultaFunil/consultarCards/1/0/1",
+                    headers=self._get_headers()
+                )
 
-        return {"success": True, "message": "Conexao OK"}
+                if response.status_code == 401:
+                    return {"success": False, "message": "Token invalido ou expirado"}
+
+                if response.status_code == 200:
+                    return {"success": True, "message": "Conexao OK"}
+
+                return {"success": False, "message": f"Erro HTTP {response.status_code}"}
+
+        except httpx.TimeoutException:
+            return {"success": False, "message": "Timeout na conexao"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 
     # ============== Busca de Clientes/OS ==============
 
